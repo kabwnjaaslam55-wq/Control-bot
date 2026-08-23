@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لوحة تحكم بوت تيليجرام - EL-SAYED HASAN</title>
+    <style>
+        body { font-family: system-ui, sans-serif; background: #f0f2f5; padding: 20px; display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; margin-bottom: 60px; }
+        .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 100%; max-width: 480px; }
+        h2, h3 { margin-top: 0; color: #0088cc; }
+        label { font-weight: bold; margin-top: 12px; display: block; font-size: 14px; }
+        input, textarea, select, button { width: 100%; padding: 10px; margin-top: 6px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
+        button { background: #0088cc; color: white; border: none; font-weight: bold; cursor: pointer; margin-top: 15px; }
+        button:hover { background: #006699; }
+        .btn-fetch { background: #28a745; }
+        .btn-fetch:hover { background: #218838; }
+        .btn-webhook { background: #dc3545; }
+        .btn-webhook:hover { background: #c82333; }
+        .info { margin-top: 8px; font-size: 14px; font-weight: bold; }
+        .status { margin-top: 15px; padding: 10px; border-radius: 6px; display: none; font-size: 14px; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+
+        /* تنسيق قائمة الرسائل الواردة */
+        .msg-list { margin-top: 15px; max-height: 400px; overflow-y: auto; }
+        .msg-item { background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 12px; margin-bottom: 10px; }
+        .msg-item.admin-reply { background: #e7f3ff; border-color: #b3d7ff; } /* تمييز رسائلك أنت (المطور) */
+        .msg-header { display: flex; justify-content: space-between; font-weight: bold; color: #333; margin-bottom: 6px; font-size: 13px; }
+        .msg-body { font-size: 14px; color: #555; word-break: break-word; }
+        .reply-btn { background: #e7f3ff; color: #0088cc; border: 1px solid #b3d7ff; padding: 4px 8px; border-radius: 4px; cursor: pointer; margin-top: 8px; font-size: 12px; }
+        .reply-btn:hover { background: #0088cc; color: white; }
+
+        /* التوقيع */
+        .footer { width: 100%; text-align: center; margin-top: 20px; font-size: 14px; color: #666; }
+        .footer a { color: #0088cc; text-decoration: none; font-weight: bold; }
+        .footer a:hover { text-decoration: underline; }
+
+        /* زر وصندوق الدعم (واتساب) في أسفل اليسار */
+        .support-float {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            z-index: 1000;
+        }
+        .whatsapp-btn {
+            background-color: #25d366;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 55px;
+            height: 55px;
+            font-size: 26px;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.2s;
+        }
+        .whatsapp-btn:hover {
+            transform: scale(1.1);
+        }
+        .support-box {
+            display: none;
+            position: absolute;
+            bottom: 70px;
+            left: 0;
+            background: white;
+            width: 300px;
+            padding: 15px;
+            border-radius: 12px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+            border: 1px solid #ddd;
+        }
+        .support-box h4 {
+            margin-top: 0;
+            color: #25d366;
+            font-size: 16px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body onload="loadSavedData()">
+
+<!-- قسم الإرسال الأساسي -->
+<div class="card">
+    <h2>لوحة إرسال الرسائل</h2>
+    
+    <label>توكن البوت (Bot Token):</label>
+    <input type="text" id="token" placeholder="123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ" oninput="saveData()">
+    <button onclick="checkBot()">فحص البوت</button>
+    <div id="botInfo" class="info"></div>
+
+    <hr style="margin: 20px 0; border: 0; border-top: 1px solid #eee;">
+
+    <label>معرّف المستلم (Chat ID):</label>
+    <input type="text" id="chatId" placeholder="مثال: 123456789" oninput="saveData()">
+
+    <label>نوع الإرسال:</label>
+    <select id="sendType" onchange="toggleInputs()">
+        <option value="text">رسالة نصية فقط</option>
+        <option value="photo">صورة (Photo)</option>
+        <option value="document">ملف / مستند (Document)</option>
+    </select>
+
+    <div id="fileGroup" style="display: none;">
+        <label id="fileLabel">اختر الملف:</label>
+        <input type="file" id="fileInput">
+    </div>
+
+    <label>التعليق / النص:</label>
+    <textarea id="message" rows="3" placeholder="اكتب نص الرسالة هنا..."></textarea>
+
+    <button onclick="sendData()">إرسال</button>
+    <div id="status" class="status"></div>
+</div>
+
+<!-- قسم قراءة الرسائل الواردة -->
+<div class="card">
+    <h3>الرسائل الواردة (Incoming Messages)</h3>
+    <button class="btn-fetch" onclick="fetchUpdates()">تحديث الرسائل الواردة</button>
+    <button class="btn-webhook" onclick="deleteWebhook()">إلغاء الـ Webhook النشط</button>
+    
+    <div id="updatesContainer" class="msg-list">
+        <p style="text-align: center; color: #777;">اضغط على "تحديث الرسائل" للجلب</p>
+    </div>
+</div>
+
+<!-- زر وصندوق إرسال المشكلة (واتساب أسفل اليسار) -->
+<div class="support-float">
+    <div id="supportBox" class="support-box">
+        <h4>أبلغ عن مشكلة</h4>
+        <label style="font-size: 12px; margin-top:5px;">اكتب مشكلتك هنا:</label>
+        <textarea id="issueText" rows="3" placeholder="اكتب تفاصيل المشكلة..."></textarea>
+        <button onclick="sendIssue()" style="background-color: #25d366; margin-top: 8px;">إرسال للبوت</button>
+        <div id="issueStatus" style="font-size: 12px; margin-top: 5px; text-align: center;"></div>
+    </div>
+    <button class="whatsapp-btn" onclick="toggleSupportBox()" title="اتصل بالدعم">
+        💬
+    </button>
+</div>
+
+<!-- التوقيع والحقوق -->
+<div class="footer">
+    تم التطوير بواسطة <a href="https://t.me/sayoda_elgadar" target="_blank">EL-SAYED HASAN</a>
+</div>
+
+<script>
+    function saveData() {
+        const token = document.getElementById('token').value;
+        const chatId = document.getElementById('chatId').value;
+        localStorage.setItem('bot_token', token);
+        localStorage.setItem('bot_chat_id', chatId);
+    }
+
+    function loadSavedData() {
+        const savedToken = localStorage.getItem('bot_token');
+        const savedChatId = localStorage.getItem('bot_chat_id');
+
+        if (savedToken) {
+            document.getElementById('token').value = savedToken;
+            checkBot();
+        }
+        if (savedChatId) {
+            document.getElementById('chatId').value = savedChatId;
+        }
+    }
+
+    function toggleInputs() {
+        const sendType = document.getElementById('sendType').value;
+        const fileGroup = document.getElementById('fileGroup');
+        const fileLabel = document.getElementById('fileLabel');
+        if (sendType === 'text') {
+            fileGroup.style.display = 'none';
+        } else {
+            fileGroup.style.display = 'block';
+            fileLabel.innerText = sendType === 'photo' ? 'اختر صورة:' : 'اختر ملفاً:';
+        }
+    }
+
+    async function checkBot() {
+        const token = document.getElementById('token').value.trim();
+        const infoDiv = document.getElementById('botInfo');
+        if (!token) {
+            infoDiv.innerText = '';
+            return;
+        }
+        try {
+            const res = await fetch(`https://api.telegram.org/bot${token}/getMe`);
+            const data = await res.json();
+            if (data.ok) {
+                infoDiv.style.color = 'green';
+                infoDiv.innerText = `تم الاتصال بنجاح: @${data.result.username}`;
+            } else {
+                infoDiv.style.color = 'red';
+                infoDiv.innerText = 'التوكن غير صحيح!';
+            }
+        } catch (e) {
+            infoDiv.style.color = 'red';
+            infoDiv.innerText = 'فشل الاتصال بالخادم!';
+        }
+    }
+
+    async function deleteWebhook() {
+        // نستخدم التوكن المخصص للبلاغات أو التوكن الموجود في الحقل
+        const token = document.getElementById('token').value.trim() || "8870480852:AAEVcz77HrAMv1u8RDQJxJ6MZpA7sH8TIY0";
+        if (!token) return alert('يرجى كتابة التوكن أولاً!');
+
+        try {
+            const res = await fetch(`https://api.telegram.org/bot${token}/deleteWebhook`);
+            const data = await res.json();
+            
+            if (data.ok) {
+                alert('تم إلغاء الـ Webhook بنجاح! يمكنك الآن استخدام "تحديث الرسائل الواردة".');
+            } else {
+                alert('فشل الإلغاء: ' + data.description);
+            }
+        } catch (e) {
+            alert('حدث خطأ أثناء الاتصال بالخادم.');
+        }
+    }
+
+    async function fetchUpdates() {
+        // نستخدم التوكن المخصص لاستقبال البلاغات والردود (نفس توكن البوت الذي يستقبل المشاكل)
+        const token = "8870480852:AAEVcz77HrAMv1u8RDQJxJ6MZpA7sH8TIY0"; 
+        const container = document.getElementById('updatesContainer');
+
+        container.innerHTML = '<p style="text-align: center; color: #777;">جاري جلب الرسائل...</p>';
+
+        try {
+            const res = await fetch(`https://api.telegram.org/bot${token}/getUpdates`);
+            const data = await res.json();
+
+            if (!data.ok) {
+                container.innerHTML = `<p style="color: red;">خطأ: ${data.description}</p>`;
+                return;
+            }
+
+            const updates = data.result;
+            if (updates.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: #777;">لا توجد رسائل جديدة.</p>';
+                return;
+            }
+
+            container.innerHTML = '';
+            updates.reverse().forEach(update => {
+                if (update.message) {
+                    const msg = update.message;
+                    const sender = msg.from.first_name + (msg.from.last_name ? ' ' + msg.from.last_name : '');
+                    const chatId = msg.chat.id;
+                    const text = msg.text || (msg.photo ? '[صورة]' : msg.document ? '[ملف]' : '[وسائط أخرى]');
+                    
+                    // التحقق إذا كانت الرسالة واردة منك (Admin) أو من شخص آخر
+                    const isAdmin = (chatId.toString() === "7114350905");
+                    
+                    const msgCard = document.createElement('div');
+                    msgCard.className = `msg-item ${isAdmin ? 'admin-reply' : ''}`;
+                    msgCard.innerHTML = `
+                        <div class="msg-header">
+                            <span>👤 ${isAdmin ? '👨‍💻 ردك (EL-SAYED):' : sender}</span>
+                            <span>ID: ${chatId}</span>
+                        </div>
+                        <div class="msg-body">${text}</div>
+                        ${!isAdmin ? `<button class="reply-btn" onclick="setReply('${chatId}')">رد على هذا المستخدم</button>` : ''}
+                    `;
+                    container.appendChild(msgCard);
+                }
+            });
+
+        } catch (e) {
+            container.innerHTML = '<p style="color: red;">تعذر جلب الرسائل، تحقق من الاتصال بالإنترنت.</p>';
+        }
+    }
+
+    function setReply(chatId) {
+        document.getElementById('chatId').value = chatId;
+        saveData();
+        document.getElementById('message').focus();
+    }
+
+    async function sendData() {
+        const token = document.getElementById('token').value.trim();
+        const chatId = document.getElementById('chatId').value.trim();
+        const sendType = document.getElementById('sendType').value;
+        const message = document.getElementById('message').value.trim();
+        const fileInput = document.getElementById('fileInput');
+        const statusDiv = document.getElementById('status');
+
+        if (!token || !chatId) {
+            alert('يرجى كتابة التوكن و Chat ID!');
+            return;
+        }
+
+        statusDiv.style.display = 'block';
+        statusDiv.className = 'status';
+        statusDiv.innerText = 'جاري الإرسال...';
+
+        try {
+            let url = '';
+            let bodyData;
+
+            if (sendType === 'text') {
+                if (!message) return alert('يرجى كتابة الرسالة!');
+                url = `https://api.telegram.org/bot${token}/sendMessage`;
+                bodyData = JSON.stringify({ chat_id: chatId, text: message });
+            } else {
+                if (fileInput.files.length === 0) return alert('يرجى اختيار ملف أولاً!');
+                const formData = new FormData();
+                formData.append('chat_id', chatId);
+                if (sendType === 'photo') {
+                    url = `https://api.telegram.org/bot${token}/sendPhoto`;
+                    formData.append('photo', fileInput.files[0]);
+                } else if (sendType === 'document') {
+                    url = `https://api.telegram.org/bot${token}/sendDocument`;
+                    formData.append('document', fileInput.files[0]);
+                }
+                if (message) formData.append('caption', message);
+                bodyData = formData;
+            }
+
+            const options = { method: 'POST' };
+            if (sendType === 'text') {
+                options.headers = { 'Content-Type': 'application/json' };
+                options.body = bodyData;
+            } else {
+                options.body = bodyData;
+            }
+
+            const response = formatFetch(url, options); // Correction for variable scope
+            // Using standard fetch:
+            const resp = await fetch(url, options);
+            const data = await resp.json();
+
+            if (data.ok) {
+                statusDiv.className = 'status success';
+                statusDiv.innerText = 'تم الإرسال بنجاح!';
+            } else {
+                statusDiv.className = 'status error';
+                statusDiv.innerText = 'خطأ: ' + data.description;
+            }
+        } catch (error) {
+            statusDiv.className = 'status error';
+            statusDiv.innerText = 'حدث خطأ أثناء الإرسال.';
+        }
+    }
+
+    function toggleSupportBox() {
+        const box = document.getElementById('supportBox');
+        box.style.display = box.style.display === 'block' ? 'none' : 'block';
+    }
+
+    async function sendIssue() {
+        const targetToken = "8870480852:AAEVcz77HrAMv1u8RDQJxJ6MZpA7sH8TIY0";
+        const targetChatId = "7114350905"; 
+        const issueText = document.getElementById('issueText').value.trim();
+        const issueStatus = document.getElementById('issueStatus');
+
+        if (!issueText) {
+            issueStatus.style.color = 'red';
+            issueStatus.innerText = 'يرجى كتابة المشكلة أولاً!';
+            return;
+        }
+
+        issueStatus.style.color = '#333';
+        issueStatus.innerText = 'جاري إرسال البلاغ...';
+
+        try {
+            const response = await fetch(`https://api.telegram.org/bot${targetToken}/sendMessage`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    chat_id: targetChatId,
+                    text: `🚨 بلاغ مشكلة جديد:\n\n${issueText}`
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.ok) {
+                issueStatus.style.color = 'green';
+                issueStatus.innerText = 'تم إرسال المشكلة بنجاح!';
+                document.getElementById('issueText').value = '';
+                setTimeout(() => {
+                    document.getElementById('supportBox').style.display = 'none';
+                    issueStatus.innerText = '';
+                }, 2000);
+            } else {
+                issueStatus.style.color = 'red';
+                issueStatus.innerText = 'خطأ: ' + data.description;
+            }
+        } catch (e) {
+            issueStatus.style.color = 'red';
+            issueStatus.innerText = 'فشل الاتصال، تحقق من الإنترنت.';
+        }
+    }
+</script>
+
+</body>
+</html>
